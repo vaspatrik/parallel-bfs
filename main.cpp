@@ -6,6 +6,7 @@
 #include <atomic>
 
 
+
 std::vector<int> frontier;
 std::vector<std::vector<int>> neighbors;
 std::vector<int> seen;

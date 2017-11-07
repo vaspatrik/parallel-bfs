@@ -1,10 +1,10 @@
 CXX=g++
 RM=rm -f
-CPPFLAGS=-pthread -std=c++11 
-LDFLAGS=-L/usr/libx86_64-linux-gnu
-LDLIBS=-ltbb
+CPPFLAGS=-pthread -std=c++14 -g 
+LDFLAGS=-L/usr/libx86_64-linux-gnu -L/usr/local/lib
+LDLIBS=-ltbb -lemon
 
-SRCS=main.cpp
+SRCS=bfs.cpp 
 OBJS=$(SRCS:.cpp=.o)
 
 all: bfs
