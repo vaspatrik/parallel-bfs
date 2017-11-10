@@ -29,38 +29,58 @@ using ParallelLabel = std::shared_ptr<std::atomic<int>>;
 template < unsigned int bitsetSize > using PrintFunctionType = void(std::size_t, std::size_t, std::size_t, std::bitset<bitsetSize>);
 
 template<typename T>
-struct NeighbourExecutor
+struct NeighbourTopDownExecutor
 {
-	NeighbourExecutor(std::vector<T>& t):_tasks(t)
+	NeighbourTopDownExecutor(std::vector<T>& t):_tasks(t)
 	{}
 	
-	NeighbourExecutor(NeighbourExecutor& e,tbb::split):_tasks(e._tasks)
+	NeighbourTopDownExecutor(NeighbourTopDownExecutor& e,tbb::split):_tasks(e._tasks)
 	{}
 
 	void operator()(const tbb::blocked_range<size_t>& r) const {
 		for (size_t i=r.begin();i!=r.end();++i)
-		_tasks[i].getNeighbours();
+		_tasks[i].getNeighboursTopDown();
 	}
 
 	std::vector<T>& _tasks;
 };
 
 template<typename T>
-struct NodeProcessorExecutor
+struct NodeProcessorTopDownExecutor
 {
-	NodeProcessorExecutor(std::vector<T>& t):_tasks(t)
+	NodeProcessorTopDownExecutor(std::vector<T>& t):_tasks(t)
 	{}
 	
-	NodeProcessorExecutor(NodeProcessorExecutor& e,tbb::split):_tasks(e._tasks)
+	NodeProcessorTopDownExecutor(NodeProcessorTopDownExecutor& e,tbb::split):_tasks(e._tasks)
 	{}
 
 	void operator()(const tbb::blocked_range<size_t>& r) const {
 		for (size_t i=r.begin();i!=r.end();++i)
-		_tasks[i].processNodes();
+		_tasks[i].processNodesTopDown();
 	}
 
 	std::vector<T>& _tasks;
 };
+
+
+
+template<typename T>
+struct MsPBfsBottomUpExecutor
+{
+	MsPBfsBottomUpExecutor(std::vector<T>& t):_tasks(t)
+	{}
+	
+	MsPBfsBottomUpExecutor(MsPBfsBottomUpExecutor& e,tbb::split):_tasks(e._tasks)
+	{}
+
+	void operator()(const tbb::blocked_range<size_t>& r) const {
+		for (size_t i=r.begin();i!=r.end();++i)
+		_tasks[i].doBottomUp();
+	}
+
+	std::vector<T>& _tasks;
+};
+
 
 
 template<typename T>

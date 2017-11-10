@@ -95,12 +95,79 @@ void TopDownMsBfs(const ListGraph& g, const std::vector<Node>& sources, std::fun
     }
    
 }
+
+template <unsigned int bitsetSize>
+void BottomUpMsBfs(const ListGraph& g, const std::vector<Node>& sources, std::function<PrintFunctionType<bitsetSize>> callback)
+{
+    // during the loop we always use the previous 'next' as the new 'frontier'. To avoid data copying we are simply swapping two maps in each iteration.
+    ListGraph::NodeMap<Label<bitsetSize>> map1(g, 0); // we use map1 as the frontier at first
+    ListGraph::NodeMap<Label<bitsetSize>> map2(g, 0);
+    ListGraph::NodeMap<Label<bitsetSize>> seen(g, 0);
+   
+    // initializing start nodes
+    for(std::size_t i = 0; i < sources.size(); ++i)
+    {
+        Node s = sources[i];
+        map1[s][i] = 1; // set frontier for sources
+        seen[s][i] = 1; // set seen for sources
+    }
+     
+    bool foundNewNode = true;
+    std::size_t iterationNum = 1;
+   
+    while(foundNewNode)
+    {
+        foundNewNode = false;
+       
+        ListGraph::NodeMap<Label<bitsetSize>>& frontier = (iterationNum % 2 == 1 ? map1 : map2);
+        ListGraph::NodeMap<Label<bitsetSize>>& next     = (iterationNum % 2 == 0 ? map1 : map2);
+       
+        for(typename ListGraph::NodeIt v(g); v != INVALID; ++v)
+        {
+            next[v].reset();
+        }
+       
+        // body of the algorithm (Listing 2)
+        for (typename ListGraph::NodeIt v(g); v != INVALID; ++v)
+        {
+            if(seen[v].all())
+            {
+                continue;
+            }
+           
+            for (ListGraph::IncEdgeIt e(g, v); e!=INVALID; ++e) //iterating edges starting from v
+            {
+                Node neighbour = g.runningNode(e); // 'other' end of edge (ie neighbours)
+                next[v] |= frontier[neighbour];
+            }
+           
+            next[v] &= ~(seen[v]);
+            seen[v] |= next[v];
+           
+            if(next[v].any())
+            {
+                callback(iterationNum, g.id(v), g.maxNodeId(), next[v]);
+                foundNewNode = true;
+            }
+        }
+       
+        ++iterationNum;
+    }
+   
+}
  
 template <unsigned int bitsetSize>
-void TopDownMsPbfs(const ListGraph& g, const std::vector<Node>& sources, std::function<PrintFunctionType<bitsetSize>> callback)
+void TopDownMsPBfs(const ListGraph& g, const std::vector<Node>& sources, std::function<PrintFunctionType<bitsetSize>> callback)
 {
     MsBfs<sourceNum> msbfs(g);
     msbfs.topDownMsPbfs(sources, callback);
+}
+
+template <unsigned int bitsetSize>
+void BottomUpMsPBfs(const ListGraph& g, const std::vector<Node>& sources, std::function<PrintFunctionType<bitsetSize>> callback)
+{
+    MsBfs<sourceNum> msbfs(g);
+    msbfs.bottomUpMsPbfs(sources, callback);
 }
  
 // @param file name to lgf file
@@ -137,6 +204,17 @@ int main(int argc, char** argv)
         TopDownMsBfs<sourceNum>(g, sources, callback);
     }
 
+    std::cout << "BottomUpMsBfs: " << std::endl;
+
+    // Bottom Up MS-BFS
+    { 
+        ListGraph g;
+       
+        GraphCopy<ListGraph, ListGraph>(readInGraph, g).run();
+        std::function<PrintFunctionType<sourceNum>> callback = printNodeFound<sourceNum>;
+        BottomUpMsBfs<sourceNum>(g, sources, callback);
+    }
+
     std::cout << std::endl;    
     std::cout << "TopDownMsPBfs: " << std::endl;
     
@@ -144,10 +222,17 @@ int main(int argc, char** argv)
         ListGraph g;
         GraphCopy<ListGraph, ListGraph>(readInGraph, g).run();
         std::function<PrintFunctionType<sourceNum>> callback = printNodeFound<sourceNum>;
-        TopDownMsPbfs<sourceNum>(g, sources, callback);
+        TopDownMsPBfs<sourceNum>(g, sources, callback);
         
     }
-      
+
+    std::cout << "BottomUpMsPBfs: " << std::endl;
+    { 
+        ListGraph g;
+        GraphCopy<ListGraph, ListGraph>(readInGraph, g).run();
+        std::function<PrintFunctionType<sourceNum>> callback = printNodeFound<sourceNum>;
+        BottomUpMsPBfs<sourceNum>(g, sources, callback);
+    }      
    
    
    

@@ -21,6 +21,7 @@ public:
     }
 
     void topDownMsPbfs(const std::vector<Node>& sources, std::function<PrintFunctionType<bitsetSize>> callback);
+    void bottomUpMsPbfs(const std::vector<Node>& sources, std::function<PrintFunctionType<bitsetSize>> callback);
     void foundNew();
     ListGraph::NodeMap<ParallelLabel>& seen();
     ListGraph::NodeMap<ParallelLabel>& frontier();
@@ -65,7 +66,7 @@ public:
         taskNodes.reserve(MsBfs<bitsetSize>::NODE_PER_WORKER);        
     }
 
-    void getNeighbours() {
+    void getNeighboursTopDown() {
         auto& g = mspbfs->getGraph();
         auto& seen = mspbfs->seen();
         auto& frontier = mspbfs->frontier();
@@ -92,7 +93,7 @@ public:
         }
     }
 
-    void processNodes() {
+    void processNodesTopDown() {
         auto& g = mspbfs->getGraph();
         auto& next = mspbfs->next();
         auto& seen = mspbfs->seen();
@@ -115,6 +116,36 @@ public:
             }
         }
 
+    }
+
+    void doBottomUp() {
+        auto& g = mspbfs->getGraph();
+        auto& seen = mspbfs->seen();
+        auto& frontier = mspbfs->frontier();
+        auto& next = mspbfs->next();
+
+        for (auto v: taskNodes)
+        {
+            if(seen[v]->load() == ~(-1 << bitsetSize))
+            {
+                continue;
+            }
+
+            for (ListGraph::IncEdgeIt e(g, v); e!=INVALID; ++e) //iterating edges starting from v
+            {
+
+                Node neighbour = g.runningNode(e); // 'other' end of edge (ie neighbours)
+                *next[v] |= frontier[neighbour]->load();
+            }
+            *next[v] &= ~(seen[v]->load());
+            *seen[v] |= next[v]->load();
+            
+            if(next[v]->load() != 0)
+            {
+                callback(mspbfs->getIterationNum(), g.id(v), g.maxNodeId(), next[v]->load());
+                mspbfs->foundNew();
+            }
+        }
     }
 
     void cleanNext() {
@@ -183,9 +214,9 @@ void MsBfs<bitsetSize>::topDownMsPbfs(const std::vector<Node>& sources, std::fun
 
     initTasks(callback);
     
-    NeighbourExecutor<MsBfsTask<bitsetSize, std::function<PrintFunctionType<bitsetSize>>>> neighbourExecutor(tasks);
-    NodeProcessorExecutor<MsBfsTask<bitsetSize, std::function<PrintFunctionType<bitsetSize>>>> nodeProcessorExecutor(tasks);
-    NodeProcessorExecutor<MsBfsTask<bitsetSize, std::function<PrintFunctionType<bitsetSize>>>> cleanerExecutor(tasks);
+    NeighbourTopDownExecutor<MsBfsTask<bitsetSize, std::function<PrintFunctionType<bitsetSize>>>> neighbourExecutor(tasks);
+    NodeProcessorTopDownExecutor<MsBfsTask<bitsetSize, std::function<PrintFunctionType<bitsetSize>>>> nodeProcessorExecutor(tasks);
+    CleanerExecutor<MsBfsTask<bitsetSize, std::function<PrintFunctionType<bitsetSize>>>> cleanerExecutor(tasks);
 
     // initializing start nodes
     for(std::size_t i = 0; i < sources.size(); ++i)
@@ -207,6 +238,53 @@ void MsBfs<bitsetSize>::topDownMsPbfs(const std::vector<Node>& sources, std::fun
         ++iterationNum; 
     }
 }
+
+template <unsigned int bitsetSize>
+void MsBfs<bitsetSize>::bottomUpMsPbfs(const std::vector<Node>& sources, std::function<PrintFunctionType<bitsetSize>> callback) 
+{
+      // during the loop we always use the previous 'next' as the new 'frontier'. To avoid data copying we are simply swapping two maps in each iteration.
+    ListGraph::NodeMap<ParallelLabel> map1(g, std::shared_ptr<std::atomic<int>>()); // we use map1 as the frontier at first
+    ListGraph::NodeMap<ParallelLabel> map2(g, std::shared_ptr<std::atomic<int>>());
+    ListGraph::NodeMap<ParallelLabel> seen_map(g, std::shared_ptr<std::atomic<int>>());
+    
+    for(typename ListGraph::NodeIt v(g); v != INVALID; ++v)
+    {
+        map1[v].reset(new std::atomic<int>(0));
+        map2[v].reset(new std::atomic<int>(0));
+        seen_map[v].reset(new std::atomic<int>(0));
+    }
+
+    ptrFrontier = &map1;
+    ptrNext     = &map2;
+    ptrSeen     = &seen_map;
+    foundNewNode.store(true);
+    iterationNum = 1;
+
+    initTasks(callback);
+    
+    MsPBfsBottomUpExecutor<MsBfsTask<bitsetSize, std::function<PrintFunctionType<bitsetSize>>>> bottomUpExecutor(tasks);
+    CleanerExecutor<MsBfsTask<bitsetSize, std::function<PrintFunctionType<bitsetSize>>>> cleanerExecutor(tasks);
+
+    // initializing start nodes
+    for(std::size_t i = 0; i < sources.size(); ++i)
+    {
+        Node s = sources[i];
+        map1[s]->store(1 << i); // set frontier for sources
+        seen_map[s]->store(1 << i); // set seen for sources
+    }
+     
+   
+    while(foundNewNode)
+    {
+        ptrFrontier.store(iterationNum.load() % 2 == 1 ? &map1 : &map2);
+        ptrNext.store(iterationNum.load() % 2 == 0 ? &map1 : &map2);
+        foundNewNode.store(false);
+        tbb::parallel_for(tbb::blocked_range<size_t>(0,tasks.size()),cleanerExecutor);
+        tbb::parallel_for(tbb::blocked_range<size_t>(0,tasks.size()),bottomUpExecutor);
+        ++iterationNum; 
+    }
+}
+
 
 template <unsigned int bitsetSize>
 void MsBfs<bitsetSize>::foundNew() {
