@@ -33,12 +33,12 @@ private:
     void getOrderNodesDegree(std::vector<Node> &degreeOrderedNodes);
     const ListGraph& g;
     std::vector<MsBfsTask<bitsetSize, std::function<PrintFunctionType<bitsetSize>>>> tasks;   
-    std::atomic<ListGraph::NodeMap<ParallelLabel>*> ptrFrontier;
-    std::atomic<ListGraph::NodeMap<ParallelLabel>*> ptrNext;
+    ListGraph::NodeMap<ParallelLabel>* ptrFrontier;
+    ListGraph::NodeMap<ParallelLabel>* ptrNext;
     ListGraph::NodeMap<ParallelLabel>* ptrSeen;
     std::atomic<bool> foundNewNode;
-    std::atomic<std::size_t> iterationNum;
-    std::atomic<std::size_t> test;
+    std::size_t iterationNum;
+    std::size_t test;
 };
 
 template <unsigned int bitsetSize>
@@ -229,8 +229,8 @@ void MsBfs<bitsetSize>::topDownMsPbfs(const std::vector<Node>& sources, std::fun
    
     while(foundNewNode)
     {
-        ptrFrontier.store(iterationNum.load() % 2 == 1 ? &map1 : &map2);
-        ptrNext.store(iterationNum.load() % 2 == 0 ? &map1 : &map2);
+        ptrFrontier = iterationNum % 2 == 1 ? &map1 : &map2;
+        ptrNext     = iterationNum % 2 == 0 ? &map1 : &map2;
         foundNewNode.store(false);
         tbb::parallel_for(tbb::blocked_range<size_t>(0,tasks.size()),cleanerExecutor);
         tbb::parallel_for(tbb::blocked_range<size_t>(0,tasks.size()),neighbourExecutor);
@@ -276,8 +276,8 @@ void MsBfs<bitsetSize>::bottomUpMsPbfs(const std::vector<Node>& sources, std::fu
    
     while(foundNewNode)
     {
-        ptrFrontier.store(iterationNum.load() % 2 == 1 ? &map1 : &map2);
-        ptrNext.store(iterationNum.load() % 2 == 0 ? &map1 : &map2);
+        ptrFrontier = iterationNum % 2 == 1 ? &map1 : &map2;
+        ptrNext     = iterationNum % 2 == 0 ? &map1 : &map2;
         foundNewNode.store(false);
         tbb::parallel_for(tbb::blocked_range<size_t>(0,tasks.size()),cleanerExecutor);
         tbb::parallel_for(tbb::blocked_range<size_t>(0,tasks.size()),bottomUpExecutor);
@@ -300,7 +300,7 @@ const ListGraph& MsBfs<bitsetSize>::getGraph()
 template <unsigned int bitsetSize>
 std::size_t MsBfs<bitsetSize>::getIterationNum()
 {
-    return iterationNum.load();
+    return iterationNum;
 }
 
 template <unsigned int bitsetSize>
@@ -310,12 +310,12 @@ ListGraph::NodeMap<ParallelLabel>& MsBfs<bitsetSize>::seen() {
 
 template <unsigned int bitsetSize>
 ListGraph::NodeMap<ParallelLabel>& MsBfs<bitsetSize>::frontier() {
-    return *ptrFrontier.load();
+    return *ptrFrontier;
 }
 
 template <unsigned int bitsetSize>
 ListGraph::NodeMap<ParallelLabel>& MsBfs<bitsetSize>::next() {
-    return *ptrNext.load();
+    return *ptrNext;
 }
 
 
